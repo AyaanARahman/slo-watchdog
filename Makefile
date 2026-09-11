@@ -87,8 +87,17 @@ deploy: load ## Apply the app manifests and wait for rollout
 	kubectl apply -f k8s/
 	kubectl -n $(NS) rollout status deploy/budget-api --timeout=120s
 
+.PHONY: dashboards
+dashboards: ## Provision Grafana dashboards from monitoring/grafana/dashboards/*.json
+	kubectl create configmap grafana-dashboard-budget-api \
+	  --namespace monitoring \
+	  --from-file=monitoring/grafana/dashboards/ \
+	  --dry-run=client -o yaml \
+	  | kubectl label --local -f - grafana_dashboard=1 -o yaml \
+	  | kubectl apply -f -
+
 .PHONY: local-up
-local-up: cluster monitoring deploy urls ## Bring up the whole stack
+local-up: cluster monitoring deploy dashboards urls ## Bring up the whole stack
 
 .PHONY: urls
 urls: ## Print the host URLs for every component
