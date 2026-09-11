@@ -3,14 +3,12 @@
 # Two goals: fit in ~7.7GB of Docker memory, and keep Alertmanager quiet enough that
 # the harness's negative assertions mean something.
 
-## ---------------------------------------------------------------------------
 ## Components that do not exist on kind
 ##
 ## kind runs the control plane as static pods bound to 127.0.0.1, so these scrape
 ## targets are unreachable by design. Left enabled, each one produces a permanently
 ## failing target and a permanently firing *Down alert — which would sit in
 ## Alertmanager forever and drown the alerts the harness actually cares about.
-## ---------------------------------------------------------------------------
 kubeControllerManager:
   enabled: false
 kubeScheduler:
@@ -28,9 +26,15 @@ defaultRules:
     kubeSchedulerAlerting: false
     kubeProxy: false
 
-## ---------------------------------------------------------------------------
+  # Docker Desktop's Linux VM drifts against the host clock whenever the laptop
+  # sleeps, so these fire permanently and for a reason that has nothing to do with
+  # the service under test. Left on, they sit in Alertmanager forever and erode the
+  # meaning of the harness's "no unexpected alerts" assertion.
+  disabled:
+    NodeClockNotSynchronising: true
+    NodeClockSkewDetected: true
+
 ## Prometheus
-## ---------------------------------------------------------------------------
 prometheus:
   service:
     type: NodePort
@@ -68,9 +72,7 @@ prometheus:
     # No storageSpec: data lives in an emptyDir and dies with the pod. Fine here —
     # the cluster is disposable and every harness run regenerates its own data.
 
-## ---------------------------------------------------------------------------
 ## Alertmanager
-## ---------------------------------------------------------------------------
 alertmanager:
   service:
     type: NodePort
@@ -102,9 +104,7 @@ alertmanager:
       # API directly, so a receiver would be a side effect with no observer.
       - name: "null"
 
-## ---------------------------------------------------------------------------
 ## Grafana
-## ---------------------------------------------------------------------------
 grafana:
   service:
     type: NodePort
@@ -135,9 +135,7 @@ grafana:
       label: grafana_dashboard
       searchNamespace: ALL
 
-## ---------------------------------------------------------------------------
-## Node exporter / kube-state-metrics — small, and the stock dashboards expect them
-## ---------------------------------------------------------------------------
+## Node exporter / kube-state-metrics - small, and the stock dashboards expect them
 prometheus-node-exporter:
   resources:
     requests:

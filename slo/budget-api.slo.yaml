@@ -1,0 +1,86 @@
+# SLO definitions for budget-api, in Sloth's Kubernetes spec format.
+#
+# this file is the source of truth. `make slo-generate` expands it into
+# slo/generated/budget-api.rules.yaml, a PrometheusRule containing recording rules
+# and multi-window, multi-burn-rate alerting rules. Never hand-edit the generated file.
+#
+# every number here is derived in docs/slo-rationale.md. The short version:
+#   * 99.5% availability -> 0.5% error budget -> ~3.6h/month
+#   * 99%  under 250ms   -> 1% of requests may be slow; 250ms is a histogram bucket edge
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: budget-api
+  namespace: budget
+  labels:
+    app.kubernetes.io/name: budget-api
+    app.kubernetes.io/part-of: slo-watchdog
+spec:
+  service: budget-api
+  labels:
+    project: slo-watchdog
+
+  slos:
+    # availability - what fraction of requests did NOT fail?
+    - name: availability
+      objective: 99.5
+      description: >-
+        Fraction of API requests not returning 5xx. Error budget is 0.5% of requests,
+        roughly 3.6 hours of total unavailability per 30 days.
+
+      sli:
+        events:
+          # "Error" events: requests the service failed to serve.
+          errorQuery: sum(rate(http_requests_total{job="budget-api",status=~"5.."}[{{.window}}]))
+          # "Total" events: every request on the measured API surface. Probes, the
+          # scrape endpoint, and /admin are already excluded at instrumentation time,
+          # so no path filter is needed here.
+          totalQuery: sum(rate(http_requests_total{job="budget-api"}[{{.window}}]))
+
+      alerting:
+        name: BudgetApiAvailability
+        labels:
+          service: budget-api
+          slo: availability
+        annotations:
+          summary: budget-api is burning its availability error budget
+          runbook: docs/slo-rationale.md
+        pageAlert:
+          labels:
+            severity: page
+        ticketAlert:
+          labels:
+            severity: ticket
+
+    # latency - what fraction of requests completed within 250ms?
+    - name: latency
+      objective: 99.0
+      description: >-
+        Fraction of API requests served in under 250ms. Measured as an exact count
+        from the le=0.25 histogram bucket, not an interpolated quantile.
+
+      sli:
+        events:
+          # slow requests = total minus those that landed at or under the 250ms
+          # bucket edge. This subtraction is only exact because 0.25 is a real bucket
+          # boundary; see docs/slo-rationale.md.
+          errorQuery: |-
+            sum(rate(http_request_duration_seconds_count{job="budget-api"}[{{.window}}]))
+            -
+            sum(rate(http_request_duration_seconds_bucket{job="budget-api",le="0.25"}[{{.window}}]))
+          totalQuery: sum(rate(http_request_duration_seconds_count{job="budget-api"}[{{.window}}]))
+
+      alerting:
+        name: BudgetApiLatency
+        labels:
+          service: budget-api
+          slo: latency
+        annotations:
+          summary: budget-api is burning its latency error budget
+          runbook: docs/slo-rationale.md
+        pageAlert:
+          labels:
+            severity: page
+        ticketAlert:
+          labels:
+            severity: ticket

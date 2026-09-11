@@ -21,6 +21,9 @@ htmlcov/
 .terraform.lock.hcl
 *.tfvars
 
+# Generated-rule drift check scratch file
+slo/generated/.check.yaml
+
 # Local
 .DS_Store
 kubeconfig

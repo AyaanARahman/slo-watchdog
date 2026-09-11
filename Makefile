@@ -17,6 +17,12 @@ PROM_URL := http://localhost:30090
 ALERT_URL:= http://localhost:30093
 GRAF_URL := http://localhost:30030
 
+# Pinned by digest, not by tag: `latest` would silently change the generated rules
+# between runs, and generated files must be reproducible from their input.
+SLOTH_IMAGE := ghcr.io/slok/sloth@sha256:ad651f2de49307f5e5f971be82927ef99ac27bd67df6aa6aff713957ede5593f
+SLO_SPEC    := slo/budget-api.slo.yaml
+SLO_RULES   := slo/generated/budget-api.rules.yaml
+
 .PHONY: help
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -61,6 +67,30 @@ run: ## Run the service locally on :8000
 build: ## Build the container image
 	docker build -t $(IMAGE):$(TAG) service
 
+## ---------- SLOs ----------
+
+.PHONY: slo-generate
+slo-generate: ## Expand the SLO spec into Prometheus recording + alerting rules
+	docker run --rm -v "$(PWD):/work" -w /work $(SLOTH_IMAGE) \
+	  generate -i $(SLO_SPEC) -o $(SLO_RULES)
+
+.PHONY: slo-check
+slo-check: ## Fail if the generated rules are stale or hand-edited
+	@docker run --rm -v "$(PWD):/work" -w /work $(SLOTH_IMAGE) \
+	  generate -i $(SLO_SPEC) -o slo/generated/.check.yaml
+	@if diff -u $(SLO_RULES) slo/generated/.check.yaml; then \
+	  rm -f slo/generated/.check.yaml; \
+	  echo "generated rules are up to date"; \
+	else \
+	  rm -f slo/generated/.check.yaml; \
+	  echo "ERROR: $(SLO_RULES) is stale. Run 'make slo-generate'."; \
+	  exit 1; \
+	fi
+
+.PHONY: slo-apply
+slo-apply: ## Apply the generated PrometheusRule to the cluster
+	kubectl apply -f $(SLO_RULES)
+
 ## ---------- cluster ----------
 
 .PHONY: cluster
@@ -97,7 +127,7 @@ dashboards: ## Provision Grafana dashboards from monitoring/grafana/dashboards/*
 	  | kubectl apply -f -
 
 .PHONY: local-up
-local-up: cluster monitoring deploy dashboards urls ## Bring up the whole stack
+local-up: cluster monitoring deploy dashboards slo-apply urls ## Bring up the whole stack
 
 .PHONY: urls
 urls: ## Print the host URLs for every component
