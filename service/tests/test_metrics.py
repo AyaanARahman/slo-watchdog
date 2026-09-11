@@ -22,6 +22,7 @@ from app.metrics import (
     SLO_LATENCY_THRESHOLD_SECONDS,
     UNMATCHED_PATH,
     Metrics,
+    is_measured,
     route_template,
 )
 
@@ -152,6 +153,27 @@ class TestCounting:
             "http_request_duration_seconds_sum",
             {"method": "GET", "path": "/api/v1/items"},
         ) == pytest.approx(0.6)
+
+
+class TestWhatIsMeasured:
+    @pytest.mark.parametrize("path", ["/api/v1/items", "/api/v1/items/abc", "/"])
+    def test_user_facing_traffic_is_measured(self, path: str) -> None:
+        assert is_measured(path)
+
+    @pytest.mark.parametrize("path", ["/healthz", "/readyz", "/metrics"])
+    def test_probes_and_scrapes_are_not(self, path: str) -> None:
+        # A steady stream of guaranteed 200s would dilute the error budget.
+        assert not is_measured(path)
+
+    @pytest.mark.parametrize("path", ["/admin/chaos", "/admin/anything/deeper"])
+    def test_the_control_plane_is_not(self, path: str) -> None:
+        # The harness drives /admin to set up each scenario. If those calls landed
+        # in the SLI, measuring would perturb the measurement.
+        assert not is_measured(path)
+
+    def test_exclusion_is_not_a_naive_substring_match(self) -> None:
+        # A real API route that merely starts with the same letters must survive.
+        assert is_measured("/api/v1/administrators")
 
 
 class TestRouteTemplate:

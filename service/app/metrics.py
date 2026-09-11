@@ -14,10 +14,17 @@ Design notes that matter downstream:
   and grow without bound. Unmatched requests collapse to a single sentinel so a 404
   scanner can't do the same thing.
 
-* **What gets measured.** Only the API surface. The probe endpoints and `/metrics`
-  itself are excluded: kubelet probes and Prometheus scrapes are a steady stream of
-  guaranteed-200s that would dilute the availability SLI and make the error budget
-  look healthier than the service actually is.
+* **What gets measured.** Only the user-facing API surface.
+
+  Probes and `/metrics` are excluded because kubelet probes and Prometheus scrapes
+  are a steady stream of guaranteed-200s that would dilute the availability SLI and
+  make the error budget look healthier than the service actually is.
+
+  `/admin/*` is excluded for a sharper reason: it is the control plane the chaos
+  harness drives. If the harness's own calls landed in the SLI, the act of
+  measuring would perturb the measurement — every scenario would inject a handful
+  of guaranteed successes into the window it is about to make assertions over.
+  Keeping the control plane out also means the SLO queries need no path filter.
 """
 
 from __future__ import annotations
@@ -48,6 +55,9 @@ LATENCY_BUCKETS: tuple[float, ...] = (
 
 EXCLUDED_PATHS = frozenset({"/metrics", "/healthz", "/readyz"})
 """Operational endpoints, kept out of the SLI. See module docstring."""
+
+EXCLUDED_PREFIXES = ("/admin",)
+"""Control-plane subtrees kept out of the SLI. See module docstring."""
 
 UNMATCHED_PATH = "/__unmatched__"
 """Sentinel for requests that matched no route, so 404s can't inflate cardinality."""
@@ -108,6 +118,11 @@ class Metrics:
         return _generate_latest(self.registry)
 
 
+def is_measured(path: str) -> bool:
+    """Whether a request to this path belongs in the SLI."""
+    return path not in EXCLUDED_PATHS and not path.startswith(EXCLUDED_PREFIXES)
+
+
 def route_template(scope: dict[str, Any]) -> str:
     """The matched route's template, or a sentinel if nothing matched.
 
@@ -134,7 +149,7 @@ class MetricsMiddleware:
         self.metrics = metrics
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        if scope["type"] != "http" or scope.get("path") in EXCLUDED_PATHS:
+        if scope["type"] != "http" or not is_measured(scope.get("path", "")):
             await self.app(scope, receive, send)
             return
 
