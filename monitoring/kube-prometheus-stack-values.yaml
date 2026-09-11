@@ -1,0 +1,155 @@
+# Values for kube-prometheus-stack on a single-node kind cluster.
+#
+# Two goals: fit in ~7.7GB of Docker memory, and keep Alertmanager quiet enough that
+# the harness's negative assertions mean something.
+
+## ---------------------------------------------------------------------------
+## Components that do not exist on kind
+##
+## kind runs the control plane as static pods bound to 127.0.0.1, so these scrape
+## targets are unreachable by design. Left enabled, each one produces a permanently
+## failing target and a permanently firing *Down alert — which would sit in
+## Alertmanager forever and drown the alerts the harness actually cares about.
+## ---------------------------------------------------------------------------
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeControllerManagerAlerting: false
+    kubeSchedulerAlerting: false
+    kubeProxy: false
+
+## ---------------------------------------------------------------------------
+## Prometheus
+## ---------------------------------------------------------------------------
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
+
+  prometheusSpec:
+    # By default the Operator only picks up ServiceMonitors labelled with this Helm
+    # release name. Setting this false makes the selector empty, which means "select
+    # every ServiceMonitor in every namespace".
+    #
+    # The manifests in k8s/ carry `release: monitoring` anyway, so either mechanism
+    # alone would work. Both are set so that a missing label fails loudly at review
+    # time rather than silently at scrape time.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+    # The longest burn-rate window is 3 days, so retention must exceed it or the 1x
+    # ticket rule evaluates over truncated data. 4d leaves headroom.
+    retention: 4d
+    retentionSize: 2GB
+
+    # How often alerting and recording rules are evaluated. Combined with the 15s
+    # scrape interval, this is the floor on how fast any alert can possibly fire.
+    evaluationInterval: 15s
+    scrapeInterval: 15s
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1500Mi
+
+    # No storageSpec: data lives in an emptyDir and dies with the pod. Fine here —
+    # the cluster is disposable and every harness run regenerates its own data.
+
+## ---------------------------------------------------------------------------
+## Alertmanager
+## ---------------------------------------------------------------------------
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30093
+
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+  config:
+    route:
+      # Deliberately fast, and much faster than production values.
+      #
+      # The harness measures *time to detection*, so Alertmanager's own batching delay
+      # is measurement error. In production group_wait is ~30s and repeat_interval
+      # hours, precisely to batch a storm into one notification — here that batching
+      # would just add noise to the number being reported.
+      group_by: ["alertname", "service"]
+      group_wait: 5s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: "null"
+    receivers:
+      # Nothing is actually delivered anywhere. The harness reads the Alertmanager
+      # API directly, so a receiver would be a side effect with no observer.
+      - name: "null"
+
+## ---------------------------------------------------------------------------
+## Grafana
+## ---------------------------------------------------------------------------
+grafana:
+  service:
+    type: NodePort
+    nodePort: 30030
+
+  # Local-only cluster reachable solely from this laptop. Do not copy this anywhere
+  # that has a network.
+  adminPassword: admin
+
+  # Measured, not guessed: 256Mi got the grafana container OOMKilled into a
+  # CrashLoopBackOff on first boot. Grafana's Go runtime plus the plugin and dashboard
+  # load sits around 300Mi at idle, so 512Mi leaves real headroom.
+  #
+  # Note this is the *limit* that matters. A too-low request gets you scheduled onto a
+  # crowded node; a too-low limit gets you killed. They fail in different ways.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  # Dashboards are provisioned from ConfigMaps carrying the label below, which is how
+  # monitoring/grafana/dashboards/*.json get in as code rather than clicked together.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+
+## ---------------------------------------------------------------------------
+## Node exporter / kube-state-metrics — small, and the stock dashboards expect them
+## ---------------------------------------------------------------------------
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 128Mi

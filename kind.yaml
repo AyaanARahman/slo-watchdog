@@ -1,0 +1,29 @@
+# Single-node cluster: control-plane only, which kind leaves untainted so workloads
+# schedule on it. A worker node would cost another ~500MB of container overhead, and
+# Docker only has 7.7GB here — that budget is better spent on Prometheus.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: slo-watchdog
+
+nodes:
+  - role: control-plane
+
+    # Host ports mapped straight through to NodePorts.
+    #
+    # The alternative is `kubectl port-forward`, but that is a long-lived subprocess
+    # the harness would have to spawn, health-check, and reap for every scenario — and
+    # it silently dies on pod restarts, which is exactly what a chaos harness causes.
+    # Static NodePorts give the harness plain, stable URLs with nothing to manage.
+    extraPortMappings:
+      - containerPort: 30080   # budget-api
+        hostPort: 30080
+        protocol: TCP
+      - containerPort: 30090   # Prometheus
+        hostPort: 30090
+        protocol: TCP
+      - containerPort: 30093   # Alertmanager
+        hostPort: 30093
+        protocol: TCP
+      - containerPort: 30030   # Grafana
+        hostPort: 30030
+        protocol: TCP

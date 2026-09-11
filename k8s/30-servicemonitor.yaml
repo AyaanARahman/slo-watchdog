@@ -1,0 +1,32 @@
+# Tells the Prometheus Operator what to scrape. Without this, Prometheus is running
+# happily and knows nothing about the service — the most common "why is my metric
+# missing" cause in an Operator-managed setup.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: budget-api
+  namespace: budget
+  labels:
+    app.kubernetes.io/name: budget-api
+    # kube-prometheus-stack defaults to selecting only ServiceMonitors labelled with
+    # its own Helm release name. Omit this and the resource is created, looks correct,
+    # and is silently ignored forever.
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: budget-api
+      # Both Services carry the name label; only the ClusterIP one is a scrape
+      # target. Without this second label the selector matches both and Prometheus
+      # scrapes the pod twice under two different job names.
+      app.kubernetes.io/component: scrape-target
+  namespaceSelector:
+    matchNames: ["budget"]
+  endpoints:
+    - port: http
+      path: /metrics
+      # 15s scrape interval. This is the floor on alert detection latency: a burn-rate
+      # rule cannot notice anything faster than the data arrives. It also sets the
+      # resolution of every rate() in the SLO queries — Prometheus needs at least two
+      # samples in a range, so no rate window may be shorter than 30s.
+      interval: 15s

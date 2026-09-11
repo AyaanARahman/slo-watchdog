@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: budget-api
+  namespace: budget
+  labels:
+    app.kubernetes.io/name: budget-api
+    app.kubernetes.io/part-of: slo-watchdog
+spec:
+  # ONE replica, deliberately.
+  #
+  # Chaos config lives in process memory, so `POST /admin/chaos` lands on exactly one
+  # pod. With two replicas the Service would load-balance the control call to one pod
+  # and leave the other serving cleanly — a 40% injection would present as roughly
+  # 20%, drifting with each request's routing. The harness's assertions would be
+  # non-deterministic for a reason invisible from outside the cluster.
+  #
+  # Scaling past one needs either a shared chaos store (Redis, a ConfigMap the pods
+  # watch) or a harness that discovers pods and fans the control call out to each.
+  # Determinism matters more than the replica count here, so: one.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: budget-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: budget-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: budget-api
+          image: budget-api:dev
+          # The image is side-loaded into kind with `kind load docker-image`, so there
+          # is no registry to pull from. Never means never attempt it.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # The root filesystem is read-only, so anything that needs to write needs an
+          # explicit volume. Python doesn't write bytecode here (PYTHONDONTWRITEBYTECODE),
+          # but /tmp is cheap insurance against a library that assumes it can.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              # No CPU limit on purpose: CPU throttling would add latency that looks
+              # exactly like injected chaos, and would corrupt the latency SLI during
+              # load. Memory is capped because a leak should be killed, not tolerated.
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: tmp
+          emptyDir: {}

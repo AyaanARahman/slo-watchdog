@@ -6,8 +6,16 @@ VENV      := .venv
 PIP       := $(VENV)/bin/pip
 PYTHON312 ?= /opt/homebrew/bin/python3.12
 
-IMAGE := budget-api
-TAG   ?= dev
+IMAGE   := budget-api
+TAG     ?= dev
+CLUSTER := slo-watchdog
+NS      := budget
+
+# Host URLs, via the kind extraPortMappings in kind.yaml.
+API_URL  := http://localhost:30080
+PROM_URL := http://localhost:30090
+ALERT_URL:= http://localhost:30093
+GRAF_URL := http://localhost:30030
 
 .PHONY: help
 help: ## Show available targets
@@ -55,13 +63,53 @@ build: ## Build the container image
 
 ## ---------- cluster ----------
 
+.PHONY: cluster
+cluster: ## Create the kind cluster (no-op if it exists)
+	@kind get clusters 2>/dev/null | grep -qx $(CLUSTER) \
+	  && echo "cluster $(CLUSTER) already exists" \
+	  || kind create cluster --config kind.yaml
+
+.PHONY: load
+load: build ## Build the image and side-load it into kind
+	kind load docker-image $(IMAGE):$(TAG) --name $(CLUSTER)
+
+.PHONY: monitoring
+monitoring: ## Install/upgrade kube-prometheus-stack
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	helm repo update prometheus-community
+	helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+	  --namespace monitoring --create-namespace \
+	  --values monitoring/kube-prometheus-stack-values.yaml \
+	  --wait --timeout 10m
+
+.PHONY: deploy
+deploy: load ## Apply the app manifests and wait for rollout
+	kubectl apply -f k8s/
+	kubectl -n $(NS) rollout status deploy/budget-api --timeout=120s
+
 .PHONY: local-up
-local-up: ## Bring up kind + monitoring stack + app
-	@echo "not yet implemented"
+local-up: cluster monitoring deploy urls ## Bring up the whole stack
+
+.PHONY: urls
+urls: ## Print the host URLs for every component
+	@echo ""
+	@echo "  budget-api    $(API_URL)"
+	@echo "  Prometheus    $(PROM_URL)"
+	@echo "  Alertmanager  $(ALERT_URL)"
+	@echo "  Grafana       $(GRAF_URL)  (admin/admin)"
+	@echo ""
+
+.PHONY: status
+status: ## Show pods and whether Prometheus has found the target
+	kubectl get pods -A -o wide
+	@echo ""
+	@echo "budget-api scrape targets known to Prometheus:"
+	@curl -s "$(PROM_URL)/api/v1/targets?state=active" \
+	  | grep -o '"job":"budget-api"[^}]*"health":"[a-z]*"' || echo "  none yet"
 
 .PHONY: local-down
-local-down: ## Tear down the kind cluster
-	@echo "not yet implemented"
+local-down: ## Delete the kind cluster
+	kind delete cluster --name $(CLUSTER)
 
 .PHONY: harness
 harness: ## Run all chaos scenarios and assert alert behaviour

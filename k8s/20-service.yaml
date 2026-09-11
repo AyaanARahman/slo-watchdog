@@ -1,0 +1,48 @@
+# Two Services, with deliberately distinct `component` labels.
+#
+# The ServiceMonitor selects on labels, not on Service names. When both Services
+# carried the same `app.kubernetes.io/name`, the selector matched BOTH and Prometheus
+# scraped the same pod twice — once as job="budget-api" and once as
+# job="budget-api-nodeport". Any SLI query that forgot the job filter would have
+# silently double-counted every request. The `component` label is what disambiguates.
+apiVersion: v1
+kind: Service
+metadata:
+  name: budget-api
+  namespace: budget
+  labels:
+    app.kubernetes.io/name: budget-api
+    # This Service is the scrape target, and the Operator derives `job` from the
+    # Service name — so this name is load-bearing. The SLO queries say
+    # job="budget-api", and it is this line that makes that true.
+    app.kubernetes.io/component: scrape-target
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: budget-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+# Exists purely so the harness and k6 can reach the service from the host at a fixed
+# URL, via the kind extraPortMapping. Labelled `host-access` so the ServiceMonitor
+# will not pick it up; note `spec.selector` still points at the pods, because that is
+# a different selector from the metadata labels the ServiceMonitor reads.
+apiVersion: v1
+kind: Service
+metadata:
+  name: budget-api-nodeport
+  namespace: budget
+  labels:
+    app.kubernetes.io/name: budget-api
+    app.kubernetes.io/component: host-access
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: budget-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      nodePort: 30080
