@@ -1,0 +1,26 @@
+# Spec / working notes — not part of the deliverable
+SPEC-lean.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+*.tfvars
+
+# Local
+.DS_Store
+kubeconfig
+harness/output/
