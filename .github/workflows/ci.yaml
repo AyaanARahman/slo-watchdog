@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch makes the in-flight run obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: lint, typecheck, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Same interpreter as the local venv and the container image.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: service/pyproject.toml
+
+      - name: Install
+        run: pip install -e "service[dev]"
+
+      - name: Lint
+        run: |
+          ruff check service
+          ruff format --check service
+
+      - name: Typecheck
+        run: mypy app
+        working-directory: service
+
+      - name: Test
+        run: pytest
+        working-directory: service
+
+  image:
+    name: build, smoke test, scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: service
+          load: true
+          tags: budget-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A build that succeeds proves nothing about a container that can't boot.
+      # These three checks are exactly the Dockerfile's security claims, enforced.
+      - name: Image runs as a non-root numeric UID
+        run: |
+          uid=$(docker run --rm budget-api:ci id -u)
+          test "$uid" = "10001" || { echo "expected uid 10001, got $uid"; exit 1; }
+
+      - name: Serves traffic with a read-only root filesystem
+        run: |
+          docker run -d --name api \
+            --read-only --tmpfs /tmp \
+            --cap-drop ALL \
+            -p 8000:8000 budget-api:ci
+
+          for _ in $(seq 1 30); do
+            curl -sf localhost:8000/healthz >/dev/null && break
+            sleep 1
+          done
+
+          curl -sf localhost:8000/healthz | grep -q '"ok"'
+          curl -sf localhost:8000/readyz  | grep -q '"ready"'
+
+      - name: Chaos injection and metrics work in the container
+        run: |
+          curl -sf -X POST localhost:8000/admin/chaos \
+            -H 'content-type: application/json' -d '{"error_rate":1.0}' >/dev/null
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/v1/items)
+          test "$code" = "500" || { echo "expected 500 under full chaos, got $code"; exit 1; }
+
+          curl -sf -X DELETE localhost:8000/admin/chaos >/dev/null
+          curl -sf localhost:8000/api/v1/items >/dev/null
+
+          # Assert a real sample line, not just the HELP/TYPE header, which is
+          # emitted even when no request has ever been served.
+          curl -sf localhost:8000/metrics | grep -q '^http_requests_total{'
+          curl -sf localhost:8000/metrics | grep -q 'http_request_duration_seconds_bucket{.*le="0.25"'
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f api || true
+
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: budget-api:ci
+          severity: HIGH,CRITICAL
+          # Unfixed base-image CVEs are noise: there is no action to take, and
+          # failing on them trains people to ignore the scanner.
+          ignore-unfixed: true
+          exit-code: "1"
