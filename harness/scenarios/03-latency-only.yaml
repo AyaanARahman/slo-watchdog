@@ -1,0 +1,29 @@
+name: latency-only
+description: >-
+  Slow but correct. Every request takes about 800ms - far past the 250ms objective -
+  while zero requests fail. The latency alerts must fire and the availability alerts
+  must stay completely silent.
+
+  This is the mirror image of fast-burn, and together they prove the two SLOs are
+  genuinely independent rather than two views of the same signal.
+
+chaos:
+  error_rate: 0.0
+  latency_ms: 800
+  latency_jitter_ms: 100
+
+load:
+  # Lower rate: at 800ms per request an open-model generator needs ~0.8 concurrent
+  # VUs per request/sec, and the point here is the latency distribution, not volume.
+  rate: 25
+  duration_seconds: 150
+
+expect:
+  fire:
+    - {alert: BudgetApiLatency, severity: page}
+    - {alert: BudgetApiLatency, severity: ticket}
+  silent:
+    - {alert: BudgetApiAvailability, severity: page}
+    - {alert: BudgetApiAvailability, severity: ticket}
+
+grace_seconds: 45

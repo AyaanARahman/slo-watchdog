@@ -1,0 +1,26 @@
+name: fast-burn
+description: >-
+  A severe outage. 40% of requests failing is far above the 14.4x fast-burn page
+  threshold of 7.2%, so the availability page must fire quickly. Latency is left
+  untouched, so both latency alerts must stay silent - errors are injected with
+  latency_ms=0, which is exactly why the two SLOs can be violated independently.
+
+chaos:
+  error_rate: 0.40
+
+load:
+  rate: 40
+  duration_seconds: 150
+
+expect:
+  # Both availability branches breach: 40% > 7.2% (page) and > 1.5% (ticket).
+  fire:
+    - {alert: BudgetApiAvailability, severity: page}
+    - {alert: BudgetApiAvailability, severity: ticket}
+  # The negative assertion. An availability outage must not masquerade as a latency
+  # problem, or the alert tells on-call the wrong thing.
+  silent:
+    - {alert: BudgetApiLatency, severity: page}
+    - {alert: BudgetApiLatency, severity: ticket}
+
+grace_seconds: 45

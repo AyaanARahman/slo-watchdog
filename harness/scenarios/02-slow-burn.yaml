@@ -1,0 +1,28 @@
+name: slow-burn
+description: >-
+  A slow leak, and the most important scenario in the suite. 1.2% errors sits above
+  the 1x ticket threshold (0.5%) but below both the 3x ticket threshold (1.5%) and
+  the 14.4x page threshold (7.2%). So it must open a ticket and must NOT page.
+
+  A naive single-threshold rule pages here, and somebody loses sleep over something
+  that could have waited until Tuesday. The negative assertion is the whole point.
+
+  1.2% is chosen deliberately rather than 1.5%: 1.5% sits exactly on the 3x boundary,
+  and a test parked on a threshold boundary flaps.
+
+chaos:
+  error_rate: 0.012
+
+load:
+  rate: 60
+  duration_seconds: 180
+
+expect:
+  fire:
+    - {alert: BudgetApiAvailability, severity: ticket}
+  silent:
+    - {alert: BudgetApiAvailability, severity: page}
+    - {alert: BudgetApiLatency, severity: page}
+    - {alert: BudgetApiLatency, severity: ticket}
+
+grace_seconds: 45

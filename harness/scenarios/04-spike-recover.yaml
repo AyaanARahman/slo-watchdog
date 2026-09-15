@@ -1,0 +1,41 @@
+name: spike-recover
+description: >-
+  A total but brief outage: 100% errors for 60 seconds, then healthy again. The page
+  must fire during the spike, and the signal must then recover once clean traffic
+  flushes the short window.
+
+  Recovery is asserted on the SLI recording rule rather than on the alert state, and
+  that distinction is the finding this scenario exists to capture. The page alert is
+  an OR of two burn-rate branches; the 14.4x branch (5m AND 1h) clears in about five
+  minutes, but the 6x branch (30m AND 6h) holds the alert up for roughly thirty. So
+  "did it recover promptly?" has to name a branch. Asserting bare alert state would
+  either wait 30 minutes or fail for a reason that is correct behaviour.
+
+chaos:
+  error_rate: 1.0
+
+load:
+  rate: 40
+  duration_seconds: 60
+
+expect:
+  fire:
+    - {alert: BudgetApiAvailability, severity: page}
+    - {alert: BudgetApiAvailability, severity: ticket}
+  silent:
+    - {alert: BudgetApiLatency, severity: page}
+    - {alert: BudgetApiLatency, severity: ticket}
+
+grace_seconds: 30
+
+recover:
+  description: >-
+    Clean traffic until the 5m window flushes the spike and the fast-burn branch
+    drops back under its threshold.
+  load:
+    rate: 40
+    duration_seconds: 330
+  assert_below:
+    query: slo:sli_error:ratio_rate5m{sloth_slo="availability"}
+    threshold: 0.072
+  timeout_seconds: 400

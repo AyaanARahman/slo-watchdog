@@ -38,17 +38,18 @@ venv: ## Create the virtualenv and install the service in editable mode
 
 .PHONY: lint
 lint: ## Run ruff (lint + format check)
-	$(VENV)/bin/ruff check service
-	$(VENV)/bin/ruff format --check service
+	$(VENV)/bin/ruff check service harness
+	$(VENV)/bin/ruff format --check service harness
 
 .PHONY: fmt
 fmt: ## Auto-format with ruff
-	$(VENV)/bin/ruff check --fix service
-	$(VENV)/bin/ruff format service
+	$(VENV)/bin/ruff check --fix service harness
+	$(VENV)/bin/ruff format service harness
 
 .PHONY: typecheck
 typecheck: ## Run mypy in strict mode
 	cd service && ../$(VENV)/bin/mypy app
+	$(VENV)/bin/mypy harness/run.py
 
 .PHONY: test
 test: ## Run the test suite
@@ -152,7 +153,11 @@ local-down: ## Delete the kind cluster
 
 .PHONY: harness
 harness: ## Run all chaos scenarios and assert alert behaviour
-	@echo "not yet implemented"
+	$(VENV)/bin/python -u harness/run.py
+
+.PHONY: harness-list
+harness-list: ## List the available scenarios
+	@$(VENV)/bin/python -u harness/run.py --list
 
 .PHONY: clean
 clean: ## Remove caches and the virtualenv

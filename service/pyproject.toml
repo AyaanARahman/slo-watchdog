@@ -16,6 +16,10 @@ dev = [
     "httpx2>=2.0",
     "ruff>=0.8",
     "mypy>=1.13",
+    # Used by harness/run.py to load the scenario definitions. The harness shares
+    # this virtualenv rather than carrying its own.
+    "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
 ]
 
 [build-system]
