@@ -8,6 +8,12 @@ name: slo-watchdog
 nodes:
   - role: control-plane
 
+    # Pinned, and pinned to match terraform/variables.tf. The ceiling comes from the
+    # Terraform kind provider, which embeds an older kind than the CLI: see the
+    # node_image comment there. Both paths must build the same cluster or the harness
+    # results depend on how the cluster was created.
+    image: kindest/node:v1.35.0
+
     # Host ports mapped straight through to NodePorts.
     #
     # The alternative is `kubectl port-forward`, but that is a long-lived subprocess

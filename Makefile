@@ -68,6 +68,40 @@ run: ## Run the service locally on :8000
 build: ## Build the container image
 	docker build -t $(IMAGE):$(TAG) service
 
+## ---------- infrastructure (Terraform) ----------
+##
+## Terraform owns the cluster and the monitoring platform. It does NOT own the
+## application: `make deploy` does. See terraform/main.tf for why that boundary is
+## where it is.
+
+TF := terraform -chdir=terraform
+
+.PHONY: tf-init
+tf-init: ## Initialise Terraform providers
+	$(TF) init
+
+.PHONY: tf-validate
+tf-validate: ## Format-check and validate the Terraform config
+	$(TF) fmt -check -recursive
+	$(TF) validate
+
+.PHONY: tf-plan
+tf-plan: ## Show what Terraform would change
+	$(TF) plan
+
+.PHONY: tf-apply
+tf-apply: ## Provision the cluster and monitoring stack with Terraform
+	$(TF) apply
+
+.PHONY: tf-destroy
+tf-destroy: ## Tear down everything Terraform created
+	$(TF) destroy
+
+.PHONY: tf-up
+tf-up: ## Terraform for the platform, then deploy the app on top
+	$(TF) apply -auto-approve
+	$(MAKE) deploy dashboards slo-apply urls
+
 ## ---------- SLOs ----------
 
 .PHONY: slo-generate

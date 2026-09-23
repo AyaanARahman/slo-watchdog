@@ -30,18 +30,63 @@ jobs:
       - name: Install
         run: pip install -e "service[dev]"
 
+      # These three mirror `make lint typecheck test` exactly. If CI and the
+      # Makefile drift apart, developers stop trusting whichever one is stricter.
       - name: Lint
         run: |
-          ruff check service
-          ruff format --check service
+          ruff check service harness
+          ruff format --check service harness
 
       - name: Typecheck
-        run: mypy app
-        working-directory: service
+        run: |
+          (cd service && mypy app)
+          mypy harness/run.py
 
       - name: Test
         run: pytest
         working-directory: service
+
+  slo-rules:
+    name: generated rules are not stale
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # slo/generated/ is generated from slo/budget-api.slo.yaml. A hand-edit there
+      # would survive review and then be silently reverted by the next regeneration,
+      # so CI regenerates and diffs. Sloth is pinned by digest for the same reason
+      # the Makefile pins it: generated output must be reproducible from its input.
+      - name: Regenerate and diff
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work \
+            ghcr.io/slok/sloth@sha256:ad651f2de49307f5e5f971be82927ef99ac27bd67df6aa6aff713957ede5593f \
+            generate -i slo/budget-api.slo.yaml -o slo/generated/.check.yaml
+          if ! diff -u slo/generated/budget-api.rules.yaml slo/generated/.check.yaml; then
+            echo "::error::slo/generated is stale. Run 'make slo-generate' and commit."
+            exit 1
+          fi
+
+  terraform:
+    name: terraform fmt and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.2"
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      # -backend=false: validation needs the providers, not remote state, and there
+      # is no cluster to talk to in CI anyway.
+      - name: Init and validate
+        run: |
+          terraform init -backend=false -no-color
+          terraform validate -no-color
+        working-directory: terraform
 
   image:
     name: build, smoke test, scan

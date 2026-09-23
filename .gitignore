@@ -19,8 +19,11 @@ htmlcov/
 .terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
 *.tfvars
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored. It pins provider versions
+# and their checksums, so committing it is what makes `terraform init` reproducible
+# across machines and CI. Ignoring it is a common mistake and silently allows a
+# provider upgrade to change behaviour between two runs of the same config.
 
 # Generated-rule drift check scratch file
 slo/generated/.check.yaml

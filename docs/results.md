@@ -11,10 +11,10 @@ ones stayed silent**.
 
 | Scenario | Expected to fire | Detected | Expected silent | Result |
 |---|---|---|---|---|
-| **fast-burn** | `BudgetApiAvailability/page` @ 40s<br>`BudgetApiAvailability/ticket` @ 40s | 40s | `BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
-| **slow-burn** | `BudgetApiAvailability/ticket` @ 30s | 30s | `BudgetApiAvailability/page` quiet<br>`BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
-| **latency-only** | `BudgetApiLatency/page` @ 40s<br>`BudgetApiLatency/ticket` @ 40s | 40s | `BudgetApiAvailability/page` quiet<br>`BudgetApiAvailability/ticket` quiet | PASS |
-| **spike-recover** | `BudgetApiAvailability/page` @ 15s<br>`BudgetApiAvailability/ticket` @ 15s | 15s | `BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
+| **fast-burn** | `BudgetApiAvailability/page` @ 55s<br>`BudgetApiAvailability/ticket` @ 55s | 55s | `BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
+| **slow-burn** | `BudgetApiAvailability/ticket` @ 31s | 31s | `BudgetApiAvailability/page` quiet<br>`BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
+| **latency-only** | `BudgetApiLatency/page` @ 30s<br>`BudgetApiLatency/ticket` @ 30s | 30s | `BudgetApiAvailability/page` quiet<br>`BudgetApiAvailability/ticket` quiet | PASS |
+| **spike-recover** | `BudgetApiAvailability/page` @ 45s<br>`BudgetApiAvailability/ticket` @ 45s | 45s | `BudgetApiLatency/page` quiet<br>`BudgetApiLatency/ticket` quiet | PASS |
 
 ## Scenarios
 
@@ -27,8 +27,8 @@ A severe outage. 40% of requests failing is far above the 14.4x fast-burn page t
 
 | Alert | Expectation | Observed |
 |---|---|---|
-| `BudgetApiAvailability/page` | must fire | fired at 40.1s |
-| `BudgetApiAvailability/ticket` | must fire | fired at 40.1s |
+| `BudgetApiAvailability/page` | must fire | fired at 55.2s |
+| `BudgetApiAvailability/ticket` | must fire | fired at 55.2s |
 | `BudgetApiLatency/page` | must stay silent | stayed silent |
 | `BudgetApiLatency/ticket` | must stay silent | stayed silent |
 
@@ -43,7 +43,7 @@ A naive single-threshold rule pages here, and somebody loses sleep over somethin
 
 | Alert | Expectation | Observed |
 |---|---|---|
-| `BudgetApiAvailability/ticket` | must fire | fired at 30.1s |
+| `BudgetApiAvailability/ticket` | must fire | fired at 31.1s |
 | `BudgetApiAvailability/page` | must stay silent | stayed silent |
 | `BudgetApiLatency/page` | must stay silent | stayed silent |
 | `BudgetApiLatency/ticket` | must stay silent | stayed silent |
@@ -58,8 +58,8 @@ This is the mirror image of fast-burn, and together they prove the two SLOs are 
 
 | Alert | Expectation | Observed |
 |---|---|---|
-| `BudgetApiLatency/page` | must fire | fired at 40.1s |
-| `BudgetApiLatency/ticket` | must fire | fired at 40.1s |
+| `BudgetApiLatency/page` | must fire | fired at 30.1s |
+| `BudgetApiLatency/ticket` | must fire | fired at 30.1s |
 | `BudgetApiAvailability/page` | must stay silent | stayed silent |
 | `BudgetApiAvailability/ticket` | must stay silent | stayed silent |
 
@@ -73,12 +73,12 @@ Recovery is asserted on the SLI recording rule rather than on the alert state, a
 
 | Alert | Expectation | Observed |
 |---|---|---|
-| `BudgetApiAvailability/page` | must fire | fired at 15.0s |
-| `BudgetApiAvailability/ticket` | must fire | fired at 15.0s |
+| `BudgetApiAvailability/page` | must fire | fired at 45.2s |
+| `BudgetApiAvailability/ticket` | must fire | fired at 45.2s |
 | `BudgetApiLatency/page` | must stay silent | stayed silent |
 | `BudgetApiLatency/ticket` | must stay silent | stayed silent |
 
-Recovery: `slo:sli_error:ratio_rate5m{sloth_slo="availability"}` fell below 0.072 after **250s**.
+Recovery: `slo:sli_error:ratio_rate5m{sloth_slo="availability"}` fell below 0.072 after **271s**.
 
 ## How to read the detection times
 
