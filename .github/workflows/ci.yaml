@@ -40,7 +40,7 @@ jobs:
       - name: Typecheck
         run: |
           (cd service && mypy app)
-          mypy harness/run.py
+          mypy --strict harness/run.py
 
       - name: Test
         run: pytest

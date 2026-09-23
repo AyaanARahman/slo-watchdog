@@ -49,7 +49,10 @@ fmt: ## Auto-format with ruff
 .PHONY: typecheck
 typecheck: ## Run mypy in strict mode
 	cd service && ../$(VENV)/bin/mypy app
-	$(VENV)/bin/mypy harness/run.py
+	# --strict explicitly: run from the repo root, mypy finds no config file (the
+	# strict settings live in service/pyproject.toml) and would silently fall back
+	# to default mode.
+	$(VENV)/bin/mypy --strict harness/run.py
 
 .PHONY: test
 test: ## Run the test suite
